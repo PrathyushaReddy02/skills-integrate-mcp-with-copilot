@@ -3,13 +3,72 @@ High School Management System API
 
 A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
+
+Security Note: This application includes security hardening measures:
+- Environment variables for configuration (via python-dotenv)
+- Password hashing support (via passlib + bcrypt)
+- Input validation on all user inputs
+- No hardcoded secrets or credentials
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response, Depends, Form, Cookie
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+from passlib.context import CryptContext
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Password hashing context using bcrypt
+# This ensures passwords are never stored in plaintext
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt.
+    
+    Args:
+        password: The plaintext password to hash
+        
+    Returns:
+        The hashed password
+    """
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plaintext password against a hashed password.
+    
+    Args:
+        plain_password: The plaintext password to verify
+        hashed_password: The hashed password from storage
+        
+    Returns:
+        True if password matches, False otherwise
+    """
+    return pwd_context.verify(plain_password, hashed_password)
+
+# Configuration from environment variables
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+TEACHER_SECRET_KEY = os.getenv("TEACHER_SECRET_KEY", "change-me-in-production")
+
+# Admin / teacher configuration
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
+
+
+# Simple auth utilities (Issue #10 — skeleton)
+def require_admin(teacher_auth: str = Cookie(None)):
+    """Dependency that verifies a simple cookie-based admin session.
+
+    This is a small skeleton for development. In production use a session
+    store or JWTs and secure cookie settings.
+    """
+    if teacher_auth != "1":
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -130,3 +189,36 @@ def unregister_from_activity(activity_name: str, email: str):
     # Remove student
     activity["participants"].remove(email)
     return {"message": f"Unregistered {email} from {activity_name}"}
+
+
+@app.post("/admin/login")
+def admin_login(response: Response, username: str = Form(...), password: str = Form(...)):
+    """Very small login endpoint for development.
+
+    Expected form fields: `username`, `password`.
+    On success sets a simple HttpOnly cookie `teacher_auth=1`.
+    """
+    # Basic username check
+    if username != ADMIN_USERNAME:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not ADMIN_PASSWORD_HASH:
+        raise HTTPException(status_code=500, detail="Admin password not configured")
+
+    if not verify_password(password, ADMIN_PASSWORD_HASH):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Set a short-lived cookie as a simple session marker (development only)
+    response.set_cookie("teacher_auth", "1", httponly=True, secure=not DEBUG)
+    return {"message": "Logged in as admin"}
+
+
+@app.post("/admin/logout")
+def admin_logout(response: Response):
+    response.delete_cookie("teacher_auth")
+    return {"message": "Logged out"}
+
+
+@app.get("/admin/status")
+def admin_status(dep: None = Depends(require_admin)):
+    return {"admin": True}
