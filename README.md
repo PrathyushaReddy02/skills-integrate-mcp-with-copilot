@@ -14,3 +14,10 @@ Remember, it's self-paced so feel free to take a break! ☕️
 
 &copy; 2025 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
 
+
+## Security
+
+This project follows basic security practices. See `SECURITY.md` for the reporting policy and a short checklist.
+
+Local configuration should be provided via environment variables (a sample `.env.example` is included). Never commit secrets to the repository.
+
